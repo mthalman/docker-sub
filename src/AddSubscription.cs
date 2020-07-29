@@ -7,11 +7,12 @@ using Microsoft.Extensions.Configuration;
 using DockerSub.DataModel;
 using System.Net.Http;
 using Microsoft.Azure.WebJobs.Extensions.Http;
-using Microsoft.Azure.Management.ResourceManager.Fluent.Authentication;
-using Microsoft.Azure.Management.ResourceManager.Fluent;
 using Microsoft.Azure.Management.EventGrid;
 using Microsoft.Azure.Management.EventGrid.Models;
 using DockerSub.RestModel;
+using Microsoft.Azure.Management.ResourceManager.Fluent;
+using Microsoft.Azure.Management.ResourceManager.Fluent.Authentication;
+using System.Collections.Generic;
 
 namespace DockerSub
 {
@@ -39,7 +40,12 @@ namespace DockerSub
 
             Subscription subscription = new Subscription(subscriptionRequest.Repo, subscriptionRequest.Tag)
             {
-                WebhookUrl = subscriptionRequest.WebhookUrl
+                WebhookUrl = subscriptionRequest.WebhookUrl,
+                RegistryName = subscriptionRequest.Registry.Name,
+                RegistryType = subscriptionRequest.Registry.Type,
+                AadTenant = subscriptionRequest.Registry.AadTenant,
+                AadClientId = subscriptionRequest.Registry.AadClientId,
+                AadClientSecret = subscriptionRequest.Registry.AadClientSecret
             };
 
             await CreateEventGridSubscriptionAsync(subscription);
@@ -50,7 +56,10 @@ namespace DockerSub
 
         private async Task PersistSubscriptionAsync(Subscription subscription)
         {
+            log.LogInformation("Saving subscription data to table storage");
+
             string storageConnectionString = config["AzureWebJobsStorage"];
+            
             CloudStorageAccount storageAccount = CloudStorageAccount.Parse(storageConnectionString);
             CloudTableClient tableClient = storageAccount.CreateCloudTableClient();
             CloudTable subscriptionsTable = tableClient.GetTableReference("subscriptions");
@@ -62,6 +71,7 @@ namespace DockerSub
 
         private async Task CreateEventGridSubscriptionAsync(Subscription subscription)
         {
+            log.LogInformation("Creating event grid subscription");
             AzureCredentials azureCreds = SdkContext.AzureCredentialsFactory.FromServicePrincipal(config["DockerSubAppClientId"], config["DockerSubAppSecret"], config["DockerSubAppTenant"], AzureEnvironment.AzureGlobalCloud);
 
             using EventGridManagementClient managementClient = new EventGridManagementClient(azureCreds);
@@ -74,7 +84,11 @@ namespace DockerSub
                 new EventSubscription(
                     topic: "docker-sub-tag-changed",
                     destination: new WebHookEventSubscriptionDestination(subscription.WebhookUrl),
-                    eventDeliverySchema: "EventGridSchema")
+                    eventDeliverySchema: "EventGridSchema",
+                    filter: new EventSubscriptionFilter(advancedFilters: new List<AdvancedFilter>
+                    {
+                        new StringInAdvancedFilter("Subject", new List<string> { $"{subscription.Repo}:{subscription.Tag}" })
+                    }))
             );
         }
     }

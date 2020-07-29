@@ -17,5 +17,15 @@ namespace DockerSub.DataModel
         public string Tag => RowKey;
 
         public string WebhookUrl { get; set; }
+
+        public string RegistryName { get; set; }
+
+        public string RegistryType { get; set; }
+
+        public string AadTenant { get; set; }
+
+        public string AadClientId { get; set; }
+
+        public string AadClientSecret { get; set; }
     }
 }

@@ -5,5 +5,6 @@ namespace DockerSub.RestModel
         public string Repo { get; set; }
         public string Tag { get; set; }
         public string WebhookUrl { get; set; }
+        public Registry Registry { get; set; }
     }
 }
