@@ -9,13 +9,26 @@ namespace DockerSub.DataModel
         {
         }
 
-        public DigestEntry(string repo, string tag) : base(EncodePartitionKey(repo), tag)
+        public DigestEntry(string registry, string repo, string tag)
+            : base(GetPartitionKey(registry, repo), tag)
         {
         }
 
-        public string Repo => DecodePartitionKey(PartitionKey);
-        public string Tag => RowKey;
+        public string Repo => ParsePartitionKey(PartitionKey).Repo;
+        public string Tag => ParsePartitionKey(PartitionKey).Tag;
 
         public string Digest { get; set; }
+
+        public static string GetPartitionKey(string registry, string repo)
+            => EncodeTableKey($"{registry}+{repo}");
+
+        public static (string Repo, string Tag) ParsePartitionKey(string partitionKey)
+        {
+            var parts = DecodeTableKey(partitionKey).Split("+");
+            return (parts[0], parts[1]);
+        }
+
+        public static (string PartitionKey, string RowKey) GetKeys(string registry, string repo, string tag)
+            => (GetPartitionKey(registry, repo), tag);
     }
 }

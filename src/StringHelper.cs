@@ -2,14 +2,14 @@ namespace DockerSub
 {
     internal static class StringHelper
     {
-        public static string EncodePartitionKey(string partitionKey)
+        public static string EncodeTableKey(string tableKey)
         {
-            return partitionKey.Replace("/", "_");
+            return tableKey.Replace("/", "_");
         }
 
-        public static string DecodePartitionKey(string partitionKey)
+        public static string DecodeTableKey(string tableKey)
         {
-            return partitionKey.Replace("_", "/");
+            return tableKey.Replace("_", "/");
         }
     }
 }

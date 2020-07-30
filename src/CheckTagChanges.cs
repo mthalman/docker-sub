@@ -68,7 +68,9 @@ namespace DockerSub
             string digest = await GetDigestAsync(log, subscription);
 
             log.LogInformation($"Querying stored digest for '{subscription.Repo}:{subscription.Tag}'");
-            var retrieveOperation = TableOperation.Retrieve<DigestEntry>(StringHelper.EncodePartitionKey(subscription.Repo), subscription.Tag);
+
+            var keys = DigestEntry.GetKeys(subscription.Registry, subscription.Repo, subscription.Tag);
+            var retrieveOperation = TableOperation.Retrieve<DigestEntry>(keys.PartitionKey, keys.RowKey);
             var result = (DigestEntry)(await digestsTable.ExecuteAsync(retrieveOperation)).Result;
 
             TagChangedData tagChangedData = null;
@@ -76,19 +78,13 @@ namespace DockerSub
             if (result is null)
             {
                 log.LogInformation($"Tag '{subscription.Repo}:{subscription.Tag}' is not stored yet. Inserting into table.");
-                var insertOperation = TableOperation.Insert(new DigestEntry(subscription.Repo, subscription.Tag)
+                var insertOperation = TableOperation.Insert(new DigestEntry(subscription.Registry, subscription.Repo, subscription.Tag)
                 {
                     Digest = digest
                 });
                 await digestsTable.ExecuteAsync(insertOperation);
 
-                tagChangedData = new TagChangedData
-                {
-                    ChangeType = TagChangeType.New,
-                    Digest = digest,
-                    Repo = subscription.Repo,
-                    Tag = subscription.Tag
-                };
+                tagChangedData = CreateTagChangedData(subscription, digest, TagChangeType.New);
             }
             else if (result.Digest != digest)
             {
@@ -97,13 +93,7 @@ namespace DockerSub
                 var insertOperation = TableOperation.Merge(result);
                 await digestsTable.ExecuteAsync(insertOperation);
 
-                tagChangedData = new TagChangedData
-                {
-                    ChangeType = TagChangeType.Updated,
-                    Digest = digest,
-                    Repo = subscription.Repo,
-                    Tag = subscription.Tag
-                };
+                tagChangedData = CreateTagChangedData(subscription, digest, TagChangeType.Updated);
             }
             else
             {
@@ -119,12 +109,23 @@ namespace DockerSub
                     Id = Guid.NewGuid().ToString(),
                     EventTime = DateTime.UtcNow,
                     EventType = tagChangedData.ChangeType.ToString(),
-                    DataVersion = "1.0"
+                    DataVersion = "1.0",
                 };
 
                 await SendEventNotificationAsync(log, config["TagChangedEndpoint"], config["TagChangedAccessKey"], eventGridEvent);
             }
         }
+
+        private static TagChangedData CreateTagChangedData(Subscription subscription, string digest, TagChangeType tagChangeType) =>
+            new TagChangedData
+            {
+                ChangeType = tagChangeType,
+                Digest = digest,
+                Registry = subscription.Registry,
+                Repo = subscription.Repo,
+                Tag = subscription.Tag,
+                SubscriptionId = subscription.Id
+            };
 
         private async Task<string> GetDigestAsync(ILogger log, Subscription subscription)
         {
@@ -151,7 +152,7 @@ namespace DockerSub
                 return "registry-1.docker.io";
             }
             
-            return subscription.RegistryName;
+            return subscription.Registry;
         }
 
         private Task<string> GetRegistryBearerTokenAsync(Subscription subscription)
@@ -177,13 +178,13 @@ namespace DockerSub
             FormUrlEncodedContent oauthExchangeBody = new FormUrlEncodedContent(new Dictionary<string, string>
             {
                 { "grant_type", "access_token" },
-                { "service", subscription.RegistryName },
+                { "service", subscription.Registry },
                 { "tenant", subscription.AadTenant },
                 { "access_token", aadAccessToken }
             });
 
             HttpResponseMessage tokenExchangeResponse = await httpClient.PostAsync(
-                $"https://{subscription.RegistryName}/oauth2/exchange", oauthExchangeBody);
+                $"https://{subscription.Registry}/oauth2/exchange", oauthExchangeBody);
             tokenExchangeResponse.EnsureSuccessStatusCode();
             OAuthExchangeResult acrRefreshTokenResult = JsonConvert.DeserializeObject<OAuthExchangeResult>(
                 await tokenExchangeResponse.Content.ReadAsStringAsync());
@@ -191,13 +192,13 @@ namespace DockerSub
             FormUrlEncodedContent oauthTokenBody = new FormUrlEncodedContent(new Dictionary<string, string>
             {
                 { "grant_type", "refresh_token" },
-                { "service", subscription.RegistryName },
+                { "service", subscription.Registry },
                 { "refresh_token", acrRefreshTokenResult.RefreshToken },
                 { "scope", $"repository:{subscription.Repo}:pull"}
             });
 
             HttpResponseMessage tokenResponse = await httpClient.PostAsync(
-                $"https://{subscription.RegistryName}/oauth2/token", oauthTokenBody);
+                $"https://{subscription.Registry}/oauth2/token", oauthTokenBody);
             tokenResponse.EnsureSuccessStatusCode();
             OAuthTokenResult acrAccessTokenResult = JsonConvert.DeserializeObject<OAuthTokenResult>(
                 await tokenResponse.Content.ReadAsStringAsync());
@@ -226,13 +227,6 @@ namespace DockerSub
 
             EventGridClient client = new EventGridClient(creds, httpClient, disposeHttpClient: false);
             await client.PublishEventsAsync(topicEndpoint, new List<EventGridEvent> { eventGridEvent });
-
-            // HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, topicEndpoint);
-            // request.Content = JsonContent.Create(new object[] { eventNotification });
-            // request.Headers.Add("aeg-sas-key", new string[] { topicAccessKey });
-
-            // var response = await httpClient.SendAsync(request);
-            // response.EnsureSuccessStatusCode();
         }
     }
 }

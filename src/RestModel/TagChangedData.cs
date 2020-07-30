@@ -5,6 +5,8 @@ namespace DockerSub.RestModel
 {
     public class TagChangedData
     {
+        public string SubscriptionId { get; set; }
+        public string Registry { get; set; }
         public string Repo { get; set; }
         public string Tag { get; set; }
         public string Digest { get; set; }

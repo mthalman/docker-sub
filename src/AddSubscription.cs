@@ -13,6 +13,7 @@ using DockerSub.RestModel;
 using Microsoft.Azure.Management.ResourceManager.Fluent;
 using Microsoft.Azure.Management.ResourceManager.Fluent.Authentication;
 using System.Collections.Generic;
+using Microsoft.Azure.EventGrid.Models;
 
 namespace DockerSub
 {
@@ -38,10 +39,10 @@ namespace DockerSub
 
             log.LogInformation($"Adding subscription for '{subscriptionRequest.WebhookUrl}' to '{subscriptionRequest.Repo}:{subscriptionRequest.Tag}'");
 
-            Subscription subscription = new Subscription(subscriptionRequest.Repo, subscriptionRequest.Tag)
+            string subscriptionId = System.Guid.NewGuid().ToString("N");
+
+            Subscription subscription = new Subscription(subscriptionId, subscriptionRequest.Registry.Name, subscriptionRequest.Repo, subscriptionRequest.Tag, subscriptionRequest.WebhookUrl)
             {
-                WebhookUrl = subscriptionRequest.WebhookUrl,
-                RegistryName = subscriptionRequest.Registry.Name,
                 RegistryType = subscriptionRequest.Registry.Type,
                 AadTenant = subscriptionRequest.Registry.AadTenant,
                 AadClientId = subscriptionRequest.Registry.AadClientId,
@@ -76,18 +77,19 @@ namespace DockerSub
 
             using EventGridManagementClient managementClient = new EventGridManagementClient(azureCreds);
             managementClient.SubscriptionId = config["AzureSubscription"];
-            string subscriberId = System.Guid.NewGuid().ToString("N");
             
-            var result = await managementClient.EventSubscriptions.CreateOrUpdateAsync(
+            await managementClient.EventSubscriptions.CreateOrUpdateAsync(
                 $"/subscriptions/{managementClient.SubscriptionId}/resourceGroups/{config["AzureResourceGroup"]}/providers/Microsoft.EventGrid/topics/docker-sub-tag-changed",
-                subscriberId,
+                subscription.Id,
                 new EventSubscription(
                     topic: "docker-sub-tag-changed",
                     destination: new WebHookEventSubscriptionDestination(subscription.WebhookUrl),
                     eventDeliverySchema: "EventGridSchema",
                     filter: new EventSubscriptionFilter(advancedFilters: new List<AdvancedFilter>
                     {
-                        new StringInAdvancedFilter("Subject", new List<string> { $"{subscription.Repo}:{subscription.Tag}" })
+                        new StringInAdvancedFilter(
+                            $"{nameof(EventGridEvent.Data)}.{nameof(TagChangedData.SubscriptionId)}",
+                            new List<string> { subscription.Id })
                     }))
             );
         }
