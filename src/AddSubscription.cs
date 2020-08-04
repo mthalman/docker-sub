@@ -41,7 +41,12 @@ namespace DockerSub
 
             string subscriptionId = System.Guid.NewGuid().ToString("N");
 
-            Subscription subscription = new Subscription(subscriptionId, subscriptionRequest.Registry.Name, subscriptionRequest.Repo, subscriptionRequest.Tag, subscriptionRequest.WebhookUrl)
+            Subscription subscription = new Subscription(
+                subscriptionId,
+                subscriptionRequest.Registry.Name,
+                subscriptionRequest.Repo,
+                subscriptionRequest.Tag,
+                subscriptionRequest.WebhookUrl)
             {
                 RegistryType = subscriptionRequest.Registry.Type,
                 AadTenant = subscriptionRequest.Registry.AadTenant,

@@ -3,7 +3,7 @@ using static DockerSub.StringHelper;
 
 namespace DockerSub.DataModel
 {
-    public class Subscription : TableEntity
+    public class Subscription : TableEntity, IDockerRegistryIdentifier
     {
         public Subscription()
         {

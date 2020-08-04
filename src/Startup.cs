@@ -23,6 +23,7 @@ namespace DockerSub
                 .AddEnvironmentVariables()
                 .Build();
             builder.Services.AddSingleton(config);
+            builder.Services.AddSingleton<IDockerRegistryClientFactory, DockerRegistryClientFactory>();
         }
     }
 }
